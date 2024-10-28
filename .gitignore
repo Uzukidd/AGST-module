@@ -2,9 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-agst/version.py
+asgt/version.py
 test/data
-test/alex_weights.pth
+test/alexnet_weights.pth
 
 # C extensions
 *.so

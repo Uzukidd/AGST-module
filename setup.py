@@ -32,10 +32,10 @@ def write_version_to_file(version, target_file):
 
 if __name__ == '__main__':
     version = '0.1.0+%s' % get_git_commit_number()
-    write_version_to_file(version, "agst/version.py")
+    write_version_to_file(version, "asgt/version.py")
 
     setup(
-        name= "AGST-module",
+        name= "ASGT-module",
         version=version,
         description= "Adversarial Saliency-guided Training",
         author='Uzuki Ishikawajima',

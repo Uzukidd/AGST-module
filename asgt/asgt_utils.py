@@ -12,7 +12,7 @@ from typing import *
 
 from . import attack_utils
 
-class AGST:
+class ASGT:
     def __init__(self, 
                  model:nn.Module,
                  training_forward_func:Callable,
@@ -38,7 +38,7 @@ class AGST:
         self.feature_range = feature_range
         self.device = device
         
-    def _agst_iterrate(self, 
+    def _asgt_iterrate(self, 
                       batch_X:torch.Tensor,
                       batch_adv_X:torch.Tensor,
                       masked_batch_adv_X:torch.Tensor,
@@ -244,7 +244,7 @@ class AGST:
             
             batch_adv_X, masked_batch_adv_X = self.generate_masked_adv_sample(batch_X, batch_Y)
              
-            loss = self._agst_iterrate(batch_X, 
+            loss = self._asgt_iterrate(batch_X, 
                                 batch_adv_X,
                                 masked_batch_adv_X, 
                                 batch_Y)
