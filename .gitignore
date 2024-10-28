@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 agst/version.py
+test/data
+test/alex_weights.pth
 
 # C extensions
 *.so
