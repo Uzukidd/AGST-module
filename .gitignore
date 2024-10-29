@@ -5,6 +5,7 @@ __pycache__/
 asgt/version.py
 test/data
 test/alexnet_weights.pth
+test/resnet18_weights.pth
 
 # C extensions
 *.so
