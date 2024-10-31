@@ -3,10 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 asgt/version.py
-test/data
+test/data/*
 test/alexnet_weights.pth
 test/resnet18_weights.pth
 test/robust_resnet18_weights.pth
+test/imgs/*
 # C extensions
 *.so
 
