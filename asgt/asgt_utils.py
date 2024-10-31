@@ -12,6 +12,7 @@ from captum.attr import visualization, GradientAttribution, LayerAttribution
 from typing import *
 
 from . import attack_utils
+from .model_utils import *
 
 class ASGT:
     def __init__(self, 
@@ -43,14 +44,13 @@ class ASGT:
         self.feature_range = feature_range
         self.device = device
         
-    def _asgt_iterrate(self, 
+    def _asgt_iterate(self, 
                       batch_X:torch.Tensor,
                       batch_adv_X:torch.Tensor,
                       masked_batch_adv_X:torch.Tensor,
                       batch_Y:torch.Tensor):
         
         self.model.train()
-        
         clean_logit = self.model(batch_X)
         adv_logit = self.model(batch_adv_X)
         masked_adv_logit = self.model(masked_batch_adv_X)
@@ -68,38 +68,15 @@ class ASGT:
         return loss.item()
         
     def evaluate_model(self, data_loader):
-        self.model.eval()
-        totall_accuracy = []
-        with torch.no_grad():
-            for idx, data in tqdm(enumerate(data_loader), 
-                          total=data_loader.__len__()):
-                batch_X, batch_Y = data
-                batch_X:torch.Tensor = batch_X.to(self.device)
-                batch_Y:torch.Tensor = batch_Y.to(self.device)
-                
-                outputs = self.model(batch_X)
-                predicted = outputs.argmax(1)
-                totall_accuracy.append((predicted == batch_Y).float().mean().item())
-
-        totall_accuracy = np.array(totall_accuracy).mean()
-        print(f"Accuracy: {100 * totall_accuracy:.2f}%")
-        return totall_accuracy
+        return attack_utils.evaluate_model(self.model, 
+                                           data_loader,
+                                           self.device)
         
     def evaluate_model_robustness(self, data_loader):
-        totall_accuracy = []
-        for idx, data in tqdm(enumerate(data_loader), 
-                          total=data_loader.__len__()):
-            batch_X, batch_Y = data
-            batch_X:torch.Tensor = batch_X.to(self.device)
-            batch_Y:torch.Tensor = batch_Y.to(self.device)
-            
-            batch_adv_X:torch.Tensor = self.attak_func(batch_X, 
-                                                    batch_Y)
-            totall_accuracy.append((self.model(batch_adv_X).argmax(1) == batch_Y).float().mean().item())
-        
-        totall_accuracy = np.array(totall_accuracy).mean()
-        print(f"Robustness accuracy: {100 * totall_accuracy:.2f}%")
-        return totall_accuracy
+        return attack_utils.evaluate_model_robustness(self.model,
+                                               data_loader,
+                                               self.attak_func,
+                                               self.device)
         
     def generate_masked_adv_sample(self, batch_X:torch.Tensor,
                                     batch_Y:torch.Tensor):
@@ -109,16 +86,19 @@ class ASGT:
                                                     batch_Y)
         
         attributions:torch.Tensor = self.explain_func(batch_adv_X, target = batch_Y)
-        attributions_masked_indices = attributions.view(B, -1).argsort(dim = 1, descending=False)[:, :self.k]
+        attributions = attributions.mean(1).abs().view(B, W * H)
+        _, attributions_masked_indices = torch.topk(attributions, self.k, dim=1,largest=False)
+        attributions_masked_indices = attributions_masked_indices.unsqueeze(1).expand(-1, C, -1)
+        
         _random_values = attributions.new_empty(attributions_masked_indices.size()).uniform_(*self.feature_range)
-        
-        masked_batch_adv_X = batch_adv_X.detach().clone().view(B, -1)
-        masked_batch_adv_X[:, attributions_masked_indices] = _random_values
+        masked_batch_adv_X = batch_adv_X.detach().clone().view(B, C, -1)
+        masked_batch_adv_X.scatter_(2, attributions_masked_indices, _random_values)
         masked_batch_adv_X = masked_batch_adv_X.view(B, C, W, H)
-        
+
         return batch_adv_X, masked_batch_adv_X
     
-    def show_image(self, images:torch.Tensor, comparison_images:torch.Tensor=None):
+    @staticmethod
+    def show_image(images:torch.Tensor, comparison_images:torch.Tensor=None):
         import torchvision
         import matplotlib.pyplot as plt
         
@@ -126,27 +106,29 @@ class ASGT:
             images = torch.cat((images, comparison_images), dim=3)
         
         images = images.detach().cpu()
-
-        # 使用 torchvision.utils.make_grid 将 64 张图片排列成 8x8 的网格
         grid_img = torchvision.utils.make_grid(images, nrow=2, normalize=True)
 
-        # 转换为 NumPy 格式以便用 matplotlib 显示
-        plt.imshow(grid_img.permute(1, 2, 0))  # 转换为 [H, W, C]
-        plt.axis('off')  # 隐藏坐标轴
+        plt.imshow(grid_img.permute(1, 2, 0))
+        plt.axis('off')
         plt.show()
         import pdb; pdb.set_trace()
         
-    def train_one_epoch(self, data_loader:DataLoader):
+    def train_one_epoch(self, data_loader:DataLoader, use_tqdm=True):
         running_loss = 0
-        for idx, data in tqdm(enumerate(data_loader), 
-                          total=data_loader.__len__()):
+        
+        data_loader
+        if use_tqdm:
+            data_loader = tqdm(data_loader, 
+                            total=data_loader.__len__())
+
+        for data in data_loader:
             batch_X, batch_Y = data
             batch_X:torch.Tensor = batch_X.to(self.device)
             batch_Y:torch.Tensor = batch_Y.to(self.device)
             
             batch_adv_X, masked_batch_adv_X = self.generate_masked_adv_sample(batch_X, batch_Y)
             # self.show_image(batch_X, batch_adv_X)
-            loss = self._asgt_iterrate(batch_X, 
+            loss = self._asgt_iterate(batch_X, 
                                 batch_adv_X,
                                 masked_batch_adv_X, 
                                 batch_Y)
