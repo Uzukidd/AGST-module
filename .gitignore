@@ -8,6 +8,7 @@ test/alexnet_weights.pth
 test/resnet18_weights.pth
 test/robust_resnet18_weights.pth
 test/imgs/*
+test/playground.ipynb
 # C extensions
 *.so
 

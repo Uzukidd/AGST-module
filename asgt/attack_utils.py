@@ -34,6 +34,23 @@ class auto_attack(nn.Module):
         self.model.zero_grad()
         
         return self.adversary.run_standard_evaluation(batch_X, batch_Y, bs=B)
+
+class RobustSign(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x:torch.Tensor, threshold:float):
+        ctx.save_for_backward(x)
+        ctx.threshold = threshold
+        return torch.where(x.abs() < threshold, torch.zeros_like(x), x.sign())
+    
+    @staticmethod
+    def backward(ctx, grad_output:torch.Tensor):
+        x, = ctx.saved_tensors
+        threshold = ctx.threshold
+        grad_input = torch.where(x.abs() < threshold, torch.zeros_like(grad_output), grad_output)
+        return grad_input, None
+
+def robust_sign(x:torch.Tensor, threshold:float=1e-8):
+    return RobustSign.apply(x, threshold)
     
 class FGSM(nn.Module):
     def __init__(self, model:nn.Module,
@@ -53,8 +70,8 @@ class FGSM(nn.Module):
         loss = self.loss_func(self.model(batch_X), batch_Y)
         self.model.zero_grad()
         loss.backward()
-        
-        return (batch_X + self.eps * batch_X.grad.sign()).clamp_(0.0, 1.0).detach()
+        # larger threshold can improve the stability but will reduce effectiveness.
+        return (batch_X + self.eps * robust_sign(batch_X.grad, threshold=1e-12)).clamp_(0.0, 1.0).detach()
 
 class PGD(nn.Module):
     def __init__(self, model:nn.Module,
