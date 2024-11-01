@@ -41,7 +41,7 @@ if __name__ == '__main__':
         author='Uzuki Ishikawajima',
         author_email='uzukidd@gmail.com',
         license='MIT License',
-        packages=find_packages(exclude=['test']),
+        packages=find_packages(exclude=['test', 'assets']),
         # CUDA extension compilation function [Optional]
         cmdclass={
             #'build_ext': BuildExtension,
