@@ -78,26 +78,35 @@ class PGD(nn.Module):
                  loss_func:nn.Module,
                  eps:float,
                  alpha:float,
-                 random_start:bool) -> None:
+                 epoch:int,
+                 random_start:bool=False) -> None:
         super().__init__()
         self.model = model
         self.loss_func = loss_func
         self.eps = eps
         self.alpha = alpha
         self.random_start = random_start
+        self.num_epoches = 1
         
     
     def forward(self,
                 batch_X:torch.Tensor, 
                 batch_Y:torch.Tensor):
         B = batch_X.size(0)
-        batch_X = batch_X.detach().requires_grad_(True)
         
-        loss = self.loss_func(self.model(batch_X), batch_Y)
-        self.model.zero_grad()
-        loss.backward()
+        if self.random_start:
+            batch_X = (batch_X + \
+                batch_X.new_empty(batch_X.size()).uniform_(-self.eps, self.eps)).clamp_(0.0, 1.0).detach()
         
-        return (batch_X + self.alpha * batch_X.grad.sign()).clamp_(batch_X - self.eps, batch_X + self.eps).clamp_(0.0, 1.0).detach()
+        for epoch in range(self.num_epoches):
+            batch_X = batch_X.requires_grad_(True)
+            loss = self.loss_func(self.model(batch_X), batch_Y)
+            self.model.zero_grad()
+            loss.backward()
+            
+            batch_X = (batch_X + self.alpha * batch_X.grad.sign()).clamp_(batch_X - self.eps, batch_X + self.eps).clamp_(0.0, 1.0).detach()
+        
+        return batch_X
 
 def evaluate_model(model:nn.Module, 
                    data_loader:torch.utils.data.dataloader, 

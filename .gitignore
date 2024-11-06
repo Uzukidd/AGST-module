@@ -4,9 +4,11 @@ __pycache__/
 *$py.class
 asgt/version.py
 test/data/*
+test/robust_resnet18*
+test/robust_alexnet*
+
 test/alexnet_weights.pth
 test/resnet18_weights.pth
-test/robust_resnet18_weights.pth
 test/imgs/*
 test/playground.ipynb
 # C extensions
