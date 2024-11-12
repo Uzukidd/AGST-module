@@ -40,20 +40,24 @@ class robust_training:
         self.explain_func = explain_func
         self.preprocess = preprocess
         
-        self.robust_loss_func:Callable = getattr(self, robust_loss_func)
+        if isinstance(attak_func, str):
+            self.robust_loss_func:Callable = getattr(self, "_" + robust_loss_func)
+        else:
+            self.robust_loss_func:Callable = partial(robust_loss_func, self)
         
         self.k = k
         self.lam = lam
         self.feature_range = feature_range
         self.device = device
-
-    def adversarial_saliency_guided_training(self, 
+        
+    def _concept_adversarial_saliency_guided_training(self, 
             batch_X:torch.Tensor,
             batch_Y:torch.Tensor):
         
         batch_adv_X = self.generate_adv_sample(batch_X, batch_Y)
         masked_batch_adv_X = self.generate_masked_sample(batch_adv_X, batch_Y)
         
+        self.model.train()
         clean_logit = self.model(batch_X)
         adv_logit = self.model(batch_adv_X)
         masked_adv_logit = self.model(masked_batch_adv_X)
@@ -67,41 +71,84 @@ class robust_training:
                                                   masked_adv_prob_log, 
                                                   reduction='batchmean', 
                                                   log_target=True)
-        
+
         return loss
-    
-    def standard_training(self, 
+
+    def _adversarial_saliency_guided_training(self, 
             batch_X:torch.Tensor,
             batch_Y:torch.Tensor):
+        
+        batch_adv_X = self.generate_adv_sample(batch_X, batch_Y)
+        masked_batch_adv_X = self.generate_masked_sample(batch_adv_X, batch_Y)
+        
+        self.model.train()
+        clean_logit = self.model(batch_X)
+        adv_logit = self.model(batch_adv_X)
+        masked_adv_logit = self.model(masked_batch_adv_X)
+        
+        clean_prob_log = nn.functional.log_softmax(clean_logit, dim=1)
+        masked_adv_prob_log = nn.functional.log_softmax(masked_adv_logit, dim=1)
+        
+        loss = self.loss_func(clean_logit, batch_Y) \
+                + self.loss_func(adv_logit, batch_Y) \
+                + self.lam * nn.functional.kl_div(clean_prob_log, 
+                                                  masked_adv_prob_log, 
+                                                  reduction='batchmean', 
+                                                  log_target=True)
+
+        return loss
+    
+    def _standard_training(self, 
+            batch_X:torch.Tensor,
+            batch_Y:torch.Tensor):
+        self.model.train()
         clean_logit = self.model(batch_X)
         loss = self.loss_func(clean_logit, batch_Y)
         
         return loss
     
-    def saliency_guided_training(self, 
+    def _adversarial_training(self, 
             batch_X:torch.Tensor,
             batch_Y:torch.Tensor):
+        
+        batch_adv_X = self.generate_adv_sample(batch_X, batch_Y)
+        
+        self.model.train()
         clean_logit = self.model(batch_X)
         adv_logit = self.model(batch_adv_X)
+
+        loss = self.loss_func(clean_logit, batch_Y) \
+                + self.loss_func(adv_logit, batch_Y)
         
-        batch_adv_X = self.generate_masked_sample(batch_X, batch_Y)
+        return loss
+    
+    def _saliency_guided_training(self, 
+            batch_X:torch.Tensor,
+            batch_Y:torch.Tensor):
+        
+        masked_batch_X = self.generate_masked_sample(batch_X, batch_Y)
+        masked_adv_batch_X = self.generate_adv_sample(masked_batch_X, batch_Y)
+        
+        self.model.train()
+        clean_logit = self.model(batch_X)
+        masked_adv_logit = self.model(masked_adv_batch_X)
+        
         
         clean_prob_log = nn.functional.log_softmax(clean_logit, dim=1)
-        adv_prob_log = nn.functional.log_softmax(adv_logit, dim=1)
+        masked_adv_prob_log = nn.functional.log_softmax(masked_adv_logit, dim=1)
         
         loss = self.loss_func(clean_logit, batch_Y) \
-                + self.lam * nn.functional.kl_div(clean_prob_log, adv_prob_log, reduction='batchmean', log_target=True)
+                + self.lam * nn.functional.kl_div(clean_prob_log, masked_adv_prob_log, reduction='batchmean', log_target=True)
                 
         return loss
         
     def _iterate(self, 
                       batch_X:torch.Tensor,
                       batch_Y:torch.Tensor):
-        
-        self.model.train()
+        self.model.eval()
         loss = self.robust_loss_func(batch_X = batch_X,
                                      batch_Y = batch_Y)
-        
+
         if self.training_forward_func is not None:
             self.training_forward_func(loss)
         
@@ -130,11 +177,11 @@ class robust_training:
         attributions_masked_indices = attributions_masked_indices.unsqueeze(1).expand(-1, C, -1)
         
         _random_values = attributions.new_empty(attributions_masked_indices.size()).uniform_(*self.feature_range)
-        masked_batch_adv_X = batch_X.detach().clone().view(B, C, -1)
-        masked_batch_adv_X.scatter_(2, attributions_masked_indices, _random_values)
-        masked_batch_adv_X = masked_batch_adv_X.view(B, C, W, H)
+        masked_batch_X = batch_X.detach().clone().view(B, C, -1)
+        masked_batch_X.scatter_(2, attributions_masked_indices, _random_values)
+        masked_batch_X = masked_batch_X.view(B, C, W, H)
         
-        return masked_batch_adv_X
+        return masked_batch_X
         
     def generate_adv_sample(self, batch_X:torch.Tensor,
                                     batch_Y:torch.Tensor):
@@ -283,8 +330,7 @@ class ASGT_Legacy:
         
     def train_one_epoch(self, data_loader:DataLoader, use_tqdm=True):
         running_loss = 0
-        
-        data_loader = None
+
         if use_tqdm:
             data_loader = tqdm(data_loader, 
                             total=data_loader.__len__())

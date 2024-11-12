@@ -71,7 +71,9 @@ class FGSM(nn.Module):
         self.model.zero_grad()
         loss.backward()
         # larger threshold can improve the stability but will reduce effectiveness.
-        return (batch_X + self.eps * robust_sign(batch_X.grad, threshold=1e-12)).clamp_(0.0, 1.0).detach()
+        # return (batch_X + self.eps * robust_sign(batch_X.grad, threshold=1e-12)).clamp_(0.0, 1.0).detach()
+        return (batch_X + self.eps * batch_X.grad.sign()).clamp_(0.0, 1.0).detach()
+
 
 class PGD(nn.Module):
     def __init__(self, model:nn.Module,
@@ -86,7 +88,7 @@ class PGD(nn.Module):
         self.eps = eps
         self.alpha = alpha
         self.random_start = random_start
-        self.num_epoches = 1
+        self.num_epoches = epoch
         
     
     def forward(self,
